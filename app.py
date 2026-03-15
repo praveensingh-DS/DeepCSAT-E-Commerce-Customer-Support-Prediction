@@ -19,11 +19,16 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 import os
 import pickle
-import json
 from datetime import datetime
+
+# TensorFlow is optional — app runs in rule-based demo mode if not installed
+try:
+    import tensorflow as tf
+    TF_AVAILABLE = True
+except ImportError:
+    TF_AVAILABLE = False
 
 # ── Page config ───────────────────────────────────────────
 st.set_page_config(
@@ -205,7 +210,7 @@ section[data-testid="stMain"] > div {
     font-weight: 700 !important;
     letter-spacing: 0.12em !important;
     text-transform: uppercase !important;
-    color: var(--ink-light) !important;
+    color: #1a1612 !important;
     text-shadow:
         0 1px 0 rgba(255,255,255,0.9),
         0 -1px 0 rgba(0,0,0,0.2) !important;
@@ -227,7 +232,7 @@ section[data-testid="stSidebar"] {
     box-shadow: 4px 0 20px rgba(0,0,0,0.5) !important;
 }
 section[data-testid="stSidebar"] * {
-    color: #f0d8a8 !important;
+    color: #d4b896 !important;
 }
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
@@ -407,17 +412,41 @@ h1 {
         0 4px 12px rgba(0,0,0,0.25) !important;
     letter-spacing: -0.01em !important;
 }
+/* Panel headings — dark stamped ink on aluminium, clearly visible */
 h2, h3, h4 {
     font-family: 'Bitter', serif !important;
-    color: var(--ink-mid) !important;
-    text-shadow: 0 1px 0 rgba(255,255,255,0.6) !important;
+    font-weight: 700 !important;
+    color: #1a1612 !important;
+    text-shadow:
+        0 1px 0 rgba(255,255,255,0.75),
+        0 -1px 0 rgba(0,0,0,0.18),
+        0 2px 4px rgba(0,0,0,0.12) !important;
+    letter-spacing: 0.01em !important;
+}
+/* h3 specifically inside panels — slightly smaller, spaced like a section stamp */
+.sk-panel h3 {
+    font-size: 1.05rem !important;
+    letter-spacing: 0.04em !important;
+    border-bottom: 2px solid rgba(0,0,0,0.12) !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 14px !important;
+    color: #1a1612 !important;
 }
 
 /* ── Subtitle / paragraph text ───────────────────────────── */
 p, .stMarkdown p {
-    color: #1a1612;
+    color: var(--ink-mid) !important;
     font-family: 'Bitter', serif !important;
     font-size: 0.9rem !important;
+}
+/* Sidebar paragraphs stay light on dark walnut */
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] li,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] label {
+    color: #d4b896 !important;
+    text-shadow: none !important;
 }
 
 /* ── Divider — engraved rule ─────────────────────────────── */
@@ -541,19 +570,23 @@ div[data-testid="stDataFrame"] tr:nth-child(even) td {
     vertical-align: middle;
 }
 
-/* Pipeline tag */
+/* Pipeline tag — rendered inside dark walnut sidebar */
 .sk-tag {
     display: inline-block;
-    background: linear-gradient(180deg, #e6e2d9 0%, #c9c4b8 100%);
-    border: 1px solid #8e887e;
-    border-bottom: 2px solid #6e6860;
+    background: linear-gradient(180deg, #4a3820 0%, #3a2c18 100%);
+    border-top: 1px solid #6a5030;
+    border-left: 1px solid #604828;
+    border-right: 1px solid #1e1408;
+    border-bottom: 2px solid #160e04;
     border-radius: 4px;
     padding: 3px 10px;
     font-family: 'Source Code Pro', monospace;
-    font-size: 0.74rem;
-    color: #0f0d0a;
+    font-size: 0.73rem;
     font-weight: 600;
-    margin: 3px 4px;
+    color: #e8c87a !important;
+    margin: 3px 3px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,200,80,0.15);
+    text-shadow: 0 0 8px rgba(232,200,122,0.5);
 }
 
 /* Info / pipeline box */
@@ -676,23 +709,25 @@ def load_model_and_preprocessing():
     Loads the saved ANN model and preprocessing.pkl from the notebook.
     Tries Wide_Deep_ANN.keras first, then Deep_ANN.keras.
     Returns (model, preprocessing_dict) or (None, None).
+    TensorFlow is optional — falls back to rule-based demo if not installed.
     """
     model = None
     prep  = None
 
-    # Try loading Keras model
-    for model_path in ['models/Wide_Deep_ANN.keras', 'models/Deep_ANN.keras',
-                       'models/csat_ann_model.h5']:
-        if os.path.exists(model_path):
-            try:
-                from tensorflow import keras
-                model = keras.models.load_model(model_path)
-                st.session_state['model_path'] = model_path
-                break
-            except Exception as e:
-                pass
+    # Try loading Keras model — only if TF is installed and model file exists
+    if TF_AVAILABLE:
+        for model_path in ['models/Wide_Deep_ANN.keras', 'models/Deep_ANN.keras',
+                           'models/csat_ann_model.h5']:
+            if os.path.exists(model_path):
+                try:
+                    from tensorflow import keras
+                    model = keras.models.load_model(model_path)
+                    st.session_state['model_path'] = model_path
+                    break
+                except Exception:
+                    pass
 
-    # Try loading preprocessing
+    # Try loading preprocessing (scikit-learn scaler — no TF needed)
     if os.path.exists('models/preprocessing.pkl'):
         try:
             with open('models/preprocessing.pkl', 'rb') as f:
@@ -1073,7 +1108,7 @@ with col3:
             f"{label_encode(category, CATEGORY_CLASSES)}  ({category})",
         ]
     })
-    st.dataframe(preview_df, width='stretch', hide_index=True)
+    st.dataframe(preview_df, hide_index=True, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Predict Button ────────────────────────────────────────
@@ -1245,7 +1280,7 @@ if predict_clicked:
             showlegend=False,
         )
         fig.update_xaxes(showgrid=False)
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, use_container_width=True)
 
         # Response time gauge
         fig2 = go.Figure(go.Indicator(
@@ -1273,7 +1308,7 @@ if predict_clicked:
             font=dict(color="#3d3830", family="Bitter"),
             height=220, margin=dict(t=40, b=10),
         )
-        st.plotly_chart(fig2, width='stretch')
+        st.plotly_chart(fig2, use_container_width=True)
 
     # ── Recommendations ───────────────────────────────────
     st.markdown("---")
